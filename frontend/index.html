@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>WebSocket</title>
+		<link rel="stylesheet" href="./style.css" />
+	</head>
+	<body>
+		<div class="container"></div>
+
+		<div class="form">
+			<form onsubmit="app.doSendMessage(); return false;">
+				<div class="placeholder">
+					<label>Hello <b class="username"></b>. Say something:</label>
+				</div>
+				<input type="text" class="input-message" placeholder="Enter message" />
+				<button type="submit">Send</button>
+			</form>
+		</div>
+
+		<script src="./script.js">
+			// js script here
+		</script>
+	</body>
+</html>
