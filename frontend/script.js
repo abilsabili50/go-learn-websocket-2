@@ -10,12 +10,19 @@ app.init = function () {
 
 	var username = prompt("Enter your username please:") || "No name";
 	document.querySelector(".username").innerHTML = username;
+	var room = prompt("Please write the room you wanna go to:") || "";
 
 	app.container = document.querySelector(".container");
 
 	app.ws = new WebSocket("ws://localhost:8080/ws?username=" + username);
 
 	app.ws.onopen = function () {
+		app.ws.send(
+			JSON.stringify({
+				type: "login",
+				room: room,
+			})
+		);
 		var message = "<b>me</b>: connected";
 		app.print(message);
 	};
@@ -43,6 +50,15 @@ app.init = function () {
 		app.print(message);
 	};
 
+	window.onunload = function () {
+		app.ws.send(
+			JSON.stringify({
+				type: "disconnect",
+				room,
+			})
+		);
+	};
+
 	app.print = function (message) {
 		var element = document.createElement("p");
 		element.innerHTML = message;
@@ -53,7 +69,9 @@ app.init = function () {
 		var messageRaw = document.querySelector(".input-message").value;
 		app.ws.send(
 			JSON.stringify({
-				Message: messageRaw,
+				type: "chat",
+				message: messageRaw,
+				room,
 			})
 		);
 

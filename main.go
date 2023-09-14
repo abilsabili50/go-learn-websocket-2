@@ -16,16 +16,23 @@ const MESSAGE_NEW_USER = "New User"
 const MESSAGE_CHAT = "Chat"
 const MESSAGE_LEAVE = "Leave"
 
-var connections = make([]*WebSocketConnection, 0)
+// var connections = make([]*WebSocketConnection, 0)
+
+var rooms = make(map[string][]*WebSocketConnection)
+
+// var rooms = []string{"1", "2", "3"}
 
 type SocketPayload struct {
-	Message string
+	Message string `json:"message"`
+	Type    string `json:"type"`
+	Room    string `json:"room"`
 }
 
 type SocketResponse struct {
 	From    string
 	Type    string
 	Message string
+	Room    string
 }
 
 type WebSocketConnection struct {
@@ -46,48 +53,55 @@ func main() {
 		currentGorillaConn, err := upgrader.Upgrade(w, r, w.Header())
 		if err != nil {
 			http.Error(w, "Could not open websocket connection", http.StatusBadRequest)
+			return
 		}
 
 		username := r.URL.Query().Get("username")
 		currentConn := WebSocketConnection{Conn: currentGorillaConn, Username: username}
-		connections = append(connections, &currentConn)
+		// connections = append(connections, &currentConn)
 
-		go handleIO(&currentConn, connections)
+		go handleIO(&currentConn)
 	})
 
 	fmt.Println("Server starting at :8080")
 	log.Fatalln(http.ListenAndServe(":8080", nil))
 }
 
-func handleIO(currentConn *WebSocketConnection, connections []*WebSocketConnection) {
+func handleIO(currentConn *WebSocketConnection) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Println("ERROR", fmt.Sprintf("%v", r))
 		}
 	}()
 
-	broadcastMessage(currentConn, MESSAGE_NEW_USER, "")
+	// broadcastMessage(currentConn, MESSAGE_NEW_USER, "")
 
 	for {
 		payload := SocketPayload{}
 		err := currentConn.ReadJSON(&payload)
-		if err != nil {
-			if strings.Contains(err.Error(), "websocket: close") {
-				broadcastMessage(currentConn, MESSAGE_LEAVE, "")
-				ejectConnection(currentConn)
-				return
-			}
-
+		if err != nil && strings.Contains(err.Error(), "websocket: close") {
 			log.Println("ERROR", err.Error())
 			continue
 		}
 
-		broadcastMessage(currentConn, MESSAGE_CHAT, payload.Message)
+		switch payload.Type {
+		case "disconnect":
+			broadcastMessage(currentConn, payload, MESSAGE_LEAVE)
+			ejectConnection(currentConn, payload.Room)
+			return
+		case "login":
+			rooms[payload.Room] = append(rooms[payload.Room], currentConn)
+			broadcastMessage(currentConn, payload, MESSAGE_NEW_USER)
+		case "chat":
+			broadcastMessage(currentConn, payload, MESSAGE_CHAT)
+		}
+
+		// broadcastMessage(currentConn, MESSAGE_CHAT, payload.Message)
 	}
 }
 
-func broadcastMessage(currentConn *WebSocketConnection, kind, message string) {
-	for _, eachConn := range connections {
+func broadcastMessage(currentConn *WebSocketConnection, payload SocketPayload, kind string) {
+	for _, eachConn := range rooms[payload.Room] {
 		if eachConn == currentConn {
 			continue
 		}
@@ -95,14 +109,18 @@ func broadcastMessage(currentConn *WebSocketConnection, kind, message string) {
 		eachConn.WriteJSON(SocketResponse{
 			From:    currentConn.Username,
 			Type:    kind,
-			Message: message,
+			Message: payload.Message,
+			Room:    payload.Room,
 		})
 	}
 }
 
-func ejectConnection(currentConn *WebSocketConnection) {
-	filtered := gubrak.From(connections).Reject(func(each *WebSocketConnection) bool {
+func ejectConnection(currentConn *WebSocketConnection, room string) {
+	filtered := gubrak.From(rooms[room]).Reject(func(each *WebSocketConnection) bool {
 		return each == currentConn
 	}).Result()
-	connections = filtered.([]*WebSocketConnection)
+	rooms[room] = filtered.([]*WebSocketConnection)
+	if len(rooms[room]) == 0 {
+		delete(rooms, room)
+	}
 }
